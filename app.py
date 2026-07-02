@@ -175,92 +175,92 @@ with col1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col2:
-    if image is not None:
-        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-        st.markdown("### 🤖 Denetim ve Analiz Süreci")
-        
-        # Manual Input Fallback Expander
-        with st.expander("📝 Elle İlaç Bilgisi Gir (Görsel Tarama / API Kotası Hatası Alırsanız)"):
-            st.info("Gemini/Groq vision API kotaları aşıldığında RAG ve denetim ajanlarını test etmek için ilacın üzerindeki bilgileri elle girip aşağıdaki seçeneği işaretleyebilirsiniz.")
-            m_ilac_adi = st.text_input("İlaç Adı (Örn: Parol)", "")
-            m_etken_madde = st.text_input("Etken Madde (Örn: Parasetamol)", "")
-            m_dozaj = st.text_input("Dozaj (Örn: 500 mg)", "")
-            m_uretici = st.text_input("Üretici Firma (Örn: Atabay)", "")
-            use_manual = st.checkbox("Görsel Tarama Yerine Bu Bilgileri Kullan")
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.markdown("### 🤖 Denetim ve Analiz Süreci")
+    
+    # Manual Input Fallback Expander
+    with st.expander("📝 Elle İlaç Bilgisi Gir (Görsel Tarama / API Kotası Hatası Alırsanız)"):
+        st.info("Gemini/Groq vision API kotaları aşıldığında RAG ve denetim ajanlarını test etmek için ilacın üzerindeki bilgileri elle girip aşağıdaki seçeneği işaretleyebilirsiniz.")
+        m_ilac_adi = st.text_input("İlaç Adı (Örn: Parol)", "")
+        m_etken_madde = st.text_input("Etken Madde (Örn: Parasetamol)", "")
+        m_dozaj = st.text_input("Dozaj (Örn: 500 mg)", "")
+        m_uretici = st.text_input("Üretici Firma (Örn: Atabay)", "")
+        use_manual = st.checkbox("Görsel Tarama Yerine Bu Bilgileri Kullan")
 
-        if st.button("🚀 Denetimi Başlat"):
-            # Multi-agent orchestrator setup
-            orchestrator = PharmaOrchestrator()
+    if st.button("🚀 Denetimi Başlat"):
+        # Multi-agent orchestrator setup
+        orchestrator = PharmaOrchestrator()
+        
+        # Determine manual data
+        manual_data = None
+        if use_manual:
+            if not m_ilac_adi or not m_etken_madde or not m_dozaj or not m_uretici:
+                st.error("Manuel analiz için lütfen tüm ilaç alanlarını doldurun!")
+                st.stop()
+            manual_data = {
+                "ilac_adi": m_ilac_adi,
+                "etken_madde": m_etken_madde,
+                "dozaj": m_dozaj,
+                "uretici_firma": m_uretici,
+                "yazi_okunuyor_mu": True,
+                "guven_puani": 10
+            }
+        elif image is None:
+            st.error("Lütfen sol taraftaki panelden bir ilaç kutusu fotoğrafı yükleyin veya yukarıdaki 'Elle İlaç Bilgisi Gir' kısmını doldurup 'Görsel Tarama Yerine Bu Bilgileri Kullan' seçeneğini işaretleyin.")
+            st.stop()
+        
+        # Progress indications
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.markdown("🔍 **[Vision-Scanner]** İlaç bilgileri analiz ediliyor...")
+        progress_bar.progress(20)
+        
+        # Run orchestrator
+        with st.spinner("Pharma-Guard ajanları çalışıyor..."):
+            final_report, logs = orchestrator.process_medicine(image, manual_data=manual_data)
             
-            # Progress indications
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+        progress_bar.progress(100)
+        status_text.markdown("✅ **Analiz Tamamlandı!**")
+        
+        # Display logs per agent
+        if logs:
+            st.markdown("#### 🕵️ Ajan Raporları")
+            l_col1, l_col2, l_col3, l_col4 = st.columns(4)
             
-            # Determine manual data
-            manual_data = None
-            if use_manual:
-                if not m_ilac_adi or not m_etken_madde or not m_dozaj or not m_uretici:
-                    st.error("Manuel analiz için lütfen tüm ilaç alanlarını doldurun!")
-                    st.stop()
-                manual_data = {
-                    "ilac_adi": m_ilac_adi,
-                    "etken_madde": m_etken_madde,
-                    "dozaj": m_dozaj,
-                    "uretici_firma": m_uretici,
-                    "yazi_okunuyor_mu": True,
-                    "guven_puani": 10
-                }
+            with l_col1:
+                score = logs["vision"].get("guven_puani", 1) if "vision" in logs else 0
+                st.metric("Vision Scanner", f"{score}/10", help="İlaç adı ve mg okuma doğruluğu")
+            with l_col2:
+                docs_found = logs["rag"].get("bulunan_belgeler_sayisi", 0) if "rag" in logs else 0
+                st.metric("RAG Specialist", f"{docs_found} Belge", help="Bulunan prospektüs eşleşmesi")
+            with l_col3:
+                safety_score = logs["safety"].get("guven_puani", 1) if "safety" in logs else 0
+                st.metric("Safety Auditor", f"{safety_score}/10", help="Uyuşmazlık ve risk denetim güveni")
+            with l_col4:
+                corp_score = logs["corporate"].get("guvenirlik_puani", 1) if "corporate" in logs else 0
+                st.metric("Corporate Analyst", f"{corp_score}/10", help="Üretici firma güvenliği")
             
-            status_text.markdown("🔍 **[Vision-Scanner]** İlaç bilgileri analiz ediliyor...")
-            progress_bar.progress(20)
-            
-            # Run orchestrator
-            with st.spinner("Pharma-Guard ajanları çalışıyor..."):
-                final_report, logs = orchestrator.process_medicine(image, manual_data=manual_data)
-                
-            progress_bar.progress(100)
-            status_text.markdown("✅ **Analiz Tamamlandı!**")
-            
-            # Display logs per agent
-            if logs:
-                st.markdown("#### 🕵️ Ajan Raporları")
-                l_col1, l_col2, l_col3, l_col4 = st.columns(4)
-                
-                with l_col1:
-                    score = logs["vision"].get("guven_puani", 1) if "vision" in logs else 0
-                    st.metric("Vision Scanner", f"{score}/10", help="İlaç adı ve mg okuma doğruluğu")
-                with l_col2:
-                    docs_found = logs["rag"].get("bulunan_belgeler_sayisi", 0) if "rag" in logs else 0
-                    st.metric("RAG Specialist", f"{docs_found} Belge", help="Bulunan prospektüs eşleşmesi")
-                with l_col3:
-                    safety_score = logs["safety"].get("guven_puani", 1) if "safety" in logs else 0
-                    st.metric("Safety Auditor", f"{safety_score}/10", help="Uyuşmazlık ve risk denetim güveni")
-                with l_col4:
-                    corp_score = logs["corporate"].get("guvenirlik_puani", 1) if "corporate" in logs else 0
-                    st.metric("Corporate Analyst", f"{corp_score}/10", help="Üretici firma güvenliği")
-                
-                # Check for warnings or blocks
-                if logs.get("safety", {}).get("durum") == "VERİ UYUŞMAZLIĞI":
-                    st.error(f"🚨 **VERİ UYUŞMAZLIĞI ALARMI**: {logs['safety'].get('fark_detaylari')}")
-                elif not logs.get("vision", {}).get("yazi_okunuyor_mu", True):
-                    st.warning("⚠️ **KURAL İHLALİ**: Görsel üzerindeki yazılar okunamıyor. Lütfen daha iyi ışık altında tekrar çekin.")
-                    st.error(f"Ajan Detay Hatası: {logs.get('vision')}")
-            
-            # Display Final synthesized Report
-            st.markdown("---")
-            st.markdown("### 📝 Nihai Denetim Raporu")
-            st.markdown(final_report)
-            
-            # Generate and allow downloading PDF
-            pdf_path = generate_pdf_report(final_report)
-            
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    label="📥 Profesyonel PDF Raporu İndir",
-                    data=f,
-                    file_name="ilac_denetim_raporu.pdf",
-                    mime="application/pdf"
-                )
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.info("Lütfen sol taraftaki panelden bir ilaç kutusu fotoğrafı yükleyin.")
+            # Check for warnings or blocks
+            if logs.get("safety", {}).get("durum") == "VERİ UYUŞMAZLIĞI":
+                st.error(f"🚨 **VERİ UYUŞMAZLIĞI ALARMI**: {logs['safety'].get('fark_detaylari')}")
+            elif not logs.get("vision", {}).get("yazi_okunuyor_mu", True):
+                st.warning("⚠️ **KURAL İHLALİ**: Görsel üzerindeki yazılar okunamıyor. Lütfen daha iyi ışık altında tekrar çekin.")
+                st.error(f"Ajan Detay Hatası: {logs.get('vision')}")
+        
+        # Display Final synthesized Report
+        st.markdown("---")
+        st.markdown("### 📝 Nihai Denetim Raporu")
+        st.markdown(final_report)
+        
+        # Generate and allow downloading PDF
+        pdf_path = generate_pdf_report(final_report)
+        
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="📥 Profesyonel PDF Raporu İndir",
+                data=f,
+                file_name="ilac_denetim_raporu.pdf",
+                mime="application/pdf"
+            )
+    st.markdown("</div>", unsafe_allow_html=True)
