@@ -1,0 +1,11 @@
+streamlit
+google-generativeai
+groq
+langchain
+langchain-community
+faiss-cpu
+pypdf
+python-dotenv
+reportlab
+pillow
+sentence-transformers
