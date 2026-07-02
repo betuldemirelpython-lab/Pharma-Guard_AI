@@ -136,36 +136,44 @@ class VisionScannerAgent:
                 print(f"[Pharma-Guard-AI] {model_name} Vision Hatası: {e}")
                 continue
 
-        # If Gemini fails, try Groq Llama-3.2-11b-vision-preview (or other active vision model if available)
+        # If Gemini fails, try Groq vision models (most recent active models first)
         active_groq = gr_client if gr_client is not None else groq_client
         if active_groq:
-            try:
-                print("[Pharma-Guard-AI] Gemini Vision modelleri başarısız oldu. Groq Llama-3.2-11b-vision-preview deneniyor...")
-                img_base64 = pil_to_base64(image)
-                
-                response = active_groq.chat.completions.create(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{img_base64}"
+            # Try available vision-capable models on Groq in priority order
+            groq_vision_models = [
+                "meta-llama/llama-4-scout-17b-16e-instruct",
+                "meta-llama/llama-4-maverick-17b-128e-instruct",
+                "llama-3.2-90b-vision-preview",
+                "llama-3.2-11b-vision-preview",
+            ]
+            img_base64 = pil_to_base64(image)
+            for gmodel in groq_vision_models:
+                try:
+                    print(f"[Pharma-Guard-AI] Groq Vision {gmodel} deneniyor...")
+                    response = active_groq.chat.completions.create(
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{img_base64}"
+                                        }
                                     }
-                                }
-                            ]
-                        }
-                    ],
-                    model="llama-3.2-11b-vision-preview",
-                    temperature=0.1
-                )
-                raw_text = response.choices[0].message.content
-                print(f"[Pharma-Guard-AI] Groq Vision Yanıtı:\n{raw_text}")
-                return extract_json(raw_text.strip())
-            except Exception as e:
-                print(f"[Pharma-Guard-AI] Groq Vision Hatası: {e}")
+                                ]
+                            }
+                        ],
+                        model=gmodel,
+                        temperature=0.1
+                    )
+                    raw_text = response.choices[0].message.content
+                    print(f"[Pharma-Guard-AI] Groq ({gmodel}) Vision Yanıtı:\n{raw_text}")
+                    return extract_json(raw_text.strip())
+                except Exception as e:
+                    print(f"[Pharma-Guard-AI] Groq ({gmodel}) Vision Hatası: {e}")
+                    continue
                 
         # Return fallback error dict if all failed
         return {
@@ -175,7 +183,7 @@ class VisionScannerAgent:
             "uretici_firma": "Bilinmeyen",
             "yazi_okunuyor_mu": False,
             "guven_puani": 1,
-            "hata": "Tüm Gemini ve Groq Vision modelleri kota/bağlantı hatası verdi."
+            "hata": "Tüm Gemini ve Groq Vision modelleri kota/bağlantı hatası verdi. Lütfen sol panelden yeni bir Gemini API anahtarı girin veya 'Sadece İlaç Adı ile Sorgula' yöntemini kullanın."
         }
 
 class RAGSpecialistAgent:
