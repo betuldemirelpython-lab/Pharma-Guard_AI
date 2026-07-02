@@ -14,6 +14,9 @@ load_dotenv()
 gemini_key = os.getenv("GEMINI_API_KEY")
 groq_key = os.getenv("GROQ_API_KEY")
 
+print(f"[Pharma-Guard-AI] GEMINI_API_KEY yüklendi mi: {'EVET' if gemini_key else 'HAYIR'}")
+print(f"[Pharma-Guard-AI] GROQ_API_KEY yüklendi mi: {'EVET' if groq_key else 'HAYIR'}")
+
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
@@ -35,7 +38,7 @@ def extract_json(text):
             return json.loads(json_str)
         return json.loads(text)
     except Exception as e:
-        print(f"JSON extract/parse error: {e}. Original text: {text}")
+        print(f"[Pharma-Guard-AI] JSON extract/parse error: {e}. Original text: {text}")
         raise e
 
 class VisionScannerAgent:
@@ -43,6 +46,16 @@ class VisionScannerAgent:
     Scans the image of the medicine package using Gemini 2.0 Flash to extract name, active ingredient, dosage, and manufacturer.
     """
     def run(self, image: Image.Image) -> dict:
+        # Ensure image is in RGB mode
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        
+        # Optimize image size for faster API response
+        max_size = 1024
+        if max(image.size) > max_size:
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            print(f"[Pharma-Guard-AI] Görsel boyutu optimize edildi: {image.size}")
+
         prompt = """
         You are a highly precise medical vision assistant. Analyze the uploaded image of the medicine package.
         
@@ -63,11 +76,12 @@ class VisionScannerAgent:
         try:
             model = get_gemini_model()
             response = model.generate_content([image, prompt])
+            print(f"[Pharma-Guard-AI] Gemini Vision Yanıtı:\n{response.text}")
             
             data = extract_json(response.text.strip())
             return data
         except Exception as e:
-            print(f"VisionScannerAgent error: {e}")
+            print(f"[Pharma-Guard-AI] VisionScannerAgent error: {e}")
             traceback.print_exc()
             return {
                 "ilac_adi": "Bilinmeyen İlaç",
@@ -264,7 +278,7 @@ class PharmaOrchestrator:
         vision_result = self.vision_scanner.run(image)
         
         if not vision_result.get("yazi_okunuyor_mu", True):
-            return "KURAL İHLALİ: Yazı okunmuyor veya ilaç kutusu tespit edilemedi. Lütfen fotoğrafı daha ışıklı bir yerde çekerek tekrar yükleyin.", {}
+            return "KURAL İHLALİ: Yazı okunmuyor veya ilaç kutusu tespit edilemedi. Lütfen fotoğrafı daha ışıklı bir yerde çekerek tekrar yükleyin.", {"vision": vision_result}
 
         # Step 2: RAG Search
         rag_result = self.rag_specialist.run(

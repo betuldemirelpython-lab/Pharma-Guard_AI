@@ -97,14 +97,16 @@ st.markdown("""
     }
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background-color: #1E1B4B !important;
-        color: #F8FAFC !important;
+        background: linear-gradient(180deg, #0F172A 0%, #1E1B4B 100%) !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
-    [data-testid="stSidebar"] * {
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4, [data-testid="stSidebar"] h5, [data-testid="stSidebar"] h6 {
         color: #F8FAFC !important;
     }
-    [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] strong, [data-testid="stSidebar"] div {
+        color: #E2E8F0 !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown p {
         color: #CBD5E1 !important;
     }
 </style>
@@ -218,6 +220,7 @@ with col2:
                     st.error(f"🚨 **VERİ UYUŞMAZLIĞI ALARMI**: {logs['safety'].get('fark_detaylari')}")
                 elif not logs.get("vision", {}).get("yazi_okunuyor_mu", True):
                     st.warning("⚠️ **KURAL İHLALİ**: Görsel üzerindeki yazılar okunamıyor. Lütfen daha iyi ışık altında tekrar çekin.")
+                    st.error(f"Ajan Detay Hatası: {logs.get('vision')}")
             
             # Display Final synthesized Report
             st.markdown("---")
