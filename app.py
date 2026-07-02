@@ -95,6 +95,18 @@ st.markdown("""
         transform: translateY(-2px) !important;
         box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5) !important;
     }
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #1E1B4B !important;
+        color: #F8FAFC !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #F8FAFC !important;
+    }
+    [data-testid="stSidebar"] label {
+        color: #CBD5E1 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 

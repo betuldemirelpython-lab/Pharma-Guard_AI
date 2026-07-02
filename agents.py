@@ -25,6 +25,19 @@ def get_gemini_model():
     # Using gemini-2.0-flash as it's the recommended multimodal orchestrator
     return genai.GenerativeModel("gemini-2.0-flash")
 
+def extract_json(text):
+    try:
+        # Find first '{' and last '}'
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            json_str = text[start:end+1]
+            return json.loads(json_str)
+        return json.loads(text)
+    except Exception as e:
+        print(f"JSON extract/parse error: {e}. Original text: {text}")
+        raise e
+
 class VisionScannerAgent:
     """
     Scans the image of the medicine package using Gemini 2.0 Flash to extract name, active ingredient, dosage, and manufacturer.
@@ -39,25 +52,19 @@ class VisionScannerAgent:
           "etken_madde": "Etken madde ismi (e.g. Parasetamol)",
           "dozaj": "Dozaj değeri ve birimi (e.g. 500 mg)",
           "uretici_firma": "Üretici firma adı",
-          "yazi_okunuyor_mu": true/false,
-          "guven_puani": 1-10 aralığında bir puan
+          "yazi_okunuyor_mu": true,
+          "guven_puani": 9
         }
         
         CRITICAL RULES:
         1. If the text on the package is blurry, unreadable, or missing, set "yazi_okunuyor_mu" to false. Do NOT guess the name of the medicine.
-        2. Keep the output as valid, clean JSON only (no markdown block wrapper like ```json).
+        2. Keep the output as valid, clean JSON only. Do not add introductory or concluding text.
         """
         try:
             model = get_gemini_model()
             response = model.generate_content([image, prompt])
             
-            # Extract JSON from response text
-            text = response.text.strip()
-            # Clean possible markdown format
-            if text.startswith("```"):
-                text = text.replace("```json", "", 1).replace("```", "", 1).strip()
-            
-            data = json.loads(text)
+            data = extract_json(response.text.strip())
             return data
         except Exception as e:
             print(f"VisionScannerAgent error: {e}")
@@ -143,10 +150,7 @@ class SafetyAuditorAgent:
         try:
             model = get_gemini_model()
             response = model.generate_content(prompt)
-            text = response.text.strip()
-            if text.startswith("```"):
-                text = text.replace("```json", "", 1).replace("```", "", 1).strip()
-            return json.loads(text)
+            return extract_json(response.text.strip())
         except Exception as e:
             return {
                 "uyumlu_mu": False,
@@ -176,10 +180,7 @@ class CorporateAnalystAgent:
         try:
             model = get_gemini_model()
             response = model.generate_content(prompt)
-            text = response.text.strip()
-            if text.startswith("```"):
-                text = text.replace("```json", "", 1).replace("```", "", 1).strip()
-            return json.loads(text)
+            return extract_json(response.text.strip())
         except Exception as e:
             return {
                 "firma_tanimi": f"{uretici_firma} hakkında ek bilgi alınamadı.",
