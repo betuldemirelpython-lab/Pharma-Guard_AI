@@ -47,11 +47,12 @@ def extract_json(text):
         print(f"[Pharma-Guard-AI] JSON extract/parse error: {e}. Original text: {text}")
         raise e
 
-def generate_text_with_fallback(prompt: str, system_instruction: str = None) -> str:
+def generate_text_with_fallback(prompt: str, system_instruction: str = None, gr_client = None) -> str:
     """
     Tries multiple Gemini models and falls back to Groq if all Gemini options fail.
     """
     models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    active_groq = gr_client if gr_client is not None else groq_client
     
     # 1. Try Gemini
     for model_name in models_to_try:
@@ -68,7 +69,7 @@ def generate_text_with_fallback(prompt: str, system_instruction: str = None) -> 
             continue
 
     # 2. Try Groq Llama-3-70b as last resort fallback
-    if groq_client:
+    if active_groq:
         try:
             print("[Pharma-Guard-AI] Gemini başarısız oldu. Groq (Llama-3-70B) deneniyor...")
             messages = []
@@ -76,7 +77,7 @@ def generate_text_with_fallback(prompt: str, system_instruction: str = None) -> 
                 messages.append({"role": "system", "content": system_instruction})
             messages.append({"role": "user", "content": prompt})
             
-            response = groq_client.chat.completions.create(
+            response = active_groq.chat.completions.create(
                 messages=messages,
                 model="llama-3.3-70b-versatile",
                 temperature=0.1
@@ -93,7 +94,7 @@ class VisionScannerAgent:
     Scans the image of the medicine package using Gemini 2.0 Flash to extract name, active ingredient, dosage, and manufacturer.
     Falls back to Gemini 1.5 Flash, then to Groq (Llama 3.2 Vision) if quota is exceeded.
     """
-    def run(self, image: Image.Image) -> dict:
+    def run(self, image: Image.Image, gr_client = None) -> dict:
         # Ensure image is in RGB mode
         if image.mode != "RGB":
             image = image.convert("RGB")
@@ -135,13 +136,14 @@ class VisionScannerAgent:
                 print(f"[Pharma-Guard-AI] {model_name} Vision Hatası: {e}")
                 continue
 
-        # If Gemini fails, try Groq Llama-3.2-11b-vision-preview
-        if groq_client:
+        # If Gemini fails, try Groq Llama-3.2-11b-vision-preview (or other active vision model if available)
+        active_groq = gr_client if gr_client is not None else groq_client
+        if active_groq:
             try:
                 print("[Pharma-Guard-AI] Gemini Vision modelleri başarısız oldu. Groq Llama-3.2-11b-vision-preview deneniyor...")
                 img_base64 = pil_to_base64(image)
                 
-                response = groq_client.chat.completions.create(
+                response = active_groq.chat.completions.create(
                     messages=[
                         {
                             "role": "user",
@@ -345,7 +347,17 @@ class PharmaOrchestrator:
     """
     Main manager coordinating all agents in sequence.
     """
-    def __init__(self):
+    def __init__(self, gemini_key: str = None, groq_key: str = None):
+        self.gemini_key = gemini_key or os.getenv("GEMINI_API_KEY")
+        self.groq_key = groq_key or os.getenv("GROQ_API_KEY")
+        
+        if self.gemini_key:
+            genai.configure(api_key=self.gemini_key)
+            
+        self.groq_client = None
+        if self.groq_key:
+            self.groq_client = Groq(api_key=self.groq_key)
+            
         self.vision_scanner = VisionScannerAgent()
         self.rag_specialist = RAGSpecialistAgent()
         self.safety_auditor = SafetyAuditorAgent()
@@ -373,7 +385,7 @@ class PharmaOrchestrator:
         Sadece geçerli JSON çıktısı ver.
         """
         try:
-            res_text = generate_text_with_fallback(prompt)
+            res_text = generate_text_with_fallback(prompt, gr_client=self.groq_client)
             return extract_json(res_text.strip())
         except Exception as e:
             print(f"[Pharma-Guard-AI] Drug info resolution error: {e}")
@@ -397,7 +409,7 @@ class PharmaOrchestrator:
             print(f"[Pharma-Guard-AI] Görsel taraması atlandı. Çözümlenmiş veriler kullanılıyor: {vision_result}")
         else:
             # Step 1: Scan image
-            vision_result = self.vision_scanner.run(image)
+            vision_result = self.vision_scanner.run(image, gr_client=self.groq_client)
             
             if not vision_result.get("yazi_okunuyor_mu", True):
                 return "KURAL İHLALİ: Yazı okunmuyor veya ilaç kutusu tespit edilemedi. Lütfen fotoğrafı daha ışıklı bir yerde çekerek tekrar yükleyin.", {"vision": vision_result}

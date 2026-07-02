@@ -128,6 +128,15 @@ with st.sidebar:
     st.markdown(f"**Gemini API:** <span class='badge {'badge-success' if gemini_ok == 'Aktif' else 'badge-danger'}'>{gemini_ok}</span>", unsafe_allow_html=True)
     st.markdown(f"**Groq API:** <span class='badge {'badge-success' if groq_ok == 'Aktif' else 'badge-danger'}'>{groq_ok}</span>", unsafe_allow_html=True)
     
+    st.markdown("### 🔑 API Anahtarı Değiştir")
+    st.caption("Eğer mevcut anahtarınızın kotası dolduysa, aşağıdan yeni anahtarlar girip anında test edebilirsiniz:")
+    
+    custom_gemini_key = st.text_input("Gemini API Key:", value=os.getenv("GEMINI_API_KEY") or "", type="password")
+    st.markdown("[🔗 Google AI Studio'dan Ücretsiz Gemini Anahtarı Al](https://aistudio.google.com/)", unsafe_allow_html=True)
+    
+    custom_groq_key = st.text_input("Groq API Key:", value=os.getenv("GROQ_API_KEY") or "", type="password")
+    st.markdown("[🔗 Groq Console'dan Ücretsiz Groq Anahtarı Al](https://console.groq.com/keys)", unsafe_allow_html=True)
+    
     st.markdown("---")
     st.markdown("### 📚 Prospektüs Yönetimi (RAG)")
     
@@ -185,8 +194,11 @@ with col2:
         use_manual = st.checkbox("Sadece Yazılan İlaç Adını Kullan")
 
     if st.button("🚀 Denetimi Başlat"):
-        # Multi-agent orchestrator setup
-        orchestrator = PharmaOrchestrator()
+        # Multi-agent orchestrator setup with dynamic API keys from sidebar
+        orchestrator = PharmaOrchestrator(
+            gemini_key=custom_gemini_key or None,
+            groq_key=custom_groq_key or None
+        )
         
         # Determine manual data
         manual_data = None
