@@ -118,7 +118,25 @@ st.markdown("<div class='subtitle'>Yapay Zeka Destekli Akıllı İlaç Denetim v
 
 # Sidebar - Settings, API Status and RAG Corpus Management
 with st.sidebar:
-    st.image("https://img.icons8.com/color/144/shield-with-medical-cross.png", width=80)
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 64 64" fill="none">
+            <path d="M32 4L8 14V34C8 48 18 58 32 62C46 58 56 48 56 34V14L32 4Z" fill="url(#grad)" rx="6"/>
+            <defs>
+                <linearGradient id="grad" x1="8" y1="4" x2="56" y2="62" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#3B82F6"/>
+                    <stop offset="100%" stop-color="#7C3AED"/>
+                </linearGradient>
+            </defs>
+            <rect x="27" y="20" width="10" height="24" rx="3" fill="white"/>
+            <rect x="20" y="27" width="24" height="10" rx="3" fill="white"/>
+        </svg>
+        <div>
+            <div style="color:#F8FAFC; font-size:1.1rem; font-weight:700; line-height:1.2;">Pharma-Guard</div>
+            <div style="color:#94A3B8; font-size:0.75rem;">AI Denetim Sistemi</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.markdown("### ⚙️ Sistem Durumu")
     
     # API Key check badges
