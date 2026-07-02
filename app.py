@@ -179,6 +179,15 @@ with col2:
         st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
         st.markdown("### 🤖 Denetim ve Analiz Süreci")
         
+        # Manual Input Fallback Expander
+        with st.expander("📝 Elle İlaç Bilgisi Gir (Görsel Tarama / API Kotası Hatası Alırsanız)"):
+            st.info("Gemini/Groq vision API kotaları aşıldığında RAG ve denetim ajanlarını test etmek için ilacın üzerindeki bilgileri elle girip aşağıdaki seçeneği işaretleyebilirsiniz.")
+            m_ilac_adi = st.text_input("İlaç Adı (Örn: Parol)", "")
+            m_etken_madde = st.text_input("Etken Madde (Örn: Parasetamol)", "")
+            m_dozaj = st.text_input("Dozaj (Örn: 500 mg)", "")
+            m_uretici = st.text_input("Üretici Firma (Örn: Atabay)", "")
+            use_manual = st.checkbox("Görsel Tarama Yerine Bu Bilgileri Kullan")
+
         if st.button("🚀 Denetimi Başlat"):
             # Multi-agent orchestrator setup
             orchestrator = PharmaOrchestrator()
@@ -187,12 +196,27 @@ with col2:
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            status_text.markdown("🔍 **[Vision-Scanner]** İlaç kutusu görseli analiz ediliyor...")
+            # Determine manual data
+            manual_data = None
+            if use_manual:
+                if not m_ilac_adi or not m_etken_madde or not m_dozaj or not m_uretici:
+                    st.error("Manuel analiz için lütfen tüm ilaç alanlarını doldurun!")
+                    st.stop()
+                manual_data = {
+                    "ilac_adi": m_ilac_adi,
+                    "etken_madde": m_etken_madde,
+                    "dozaj": m_dozaj,
+                    "uretici_firma": m_uretici,
+                    "yazi_okunuyor_mu": True,
+                    "guven_puani": 10
+                }
+            
+            status_text.markdown("🔍 **[Vision-Scanner]** İlaç bilgileri analiz ediliyor...")
             progress_bar.progress(20)
             
             # Run orchestrator
             with st.spinner("Pharma-Guard ajanları çalışıyor..."):
-                final_report, logs = orchestrator.process_medicine(image)
+                final_report, logs = orchestrator.process_medicine(image, manual_data=manual_data)
                 
             progress_bar.progress(100)
             status_text.markdown("✅ **Analiz Tamamlandı!**")

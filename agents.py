@@ -78,7 +78,7 @@ def generate_text_with_fallback(prompt: str, system_instruction: str = None) -> 
             
             response = groq_client.chat.completions.create(
                 messages=messages,
-                model="llama3-70b-8192",
+                model="llama-3.3-70b-versatile",
                 temperature=0.1
             )
             return response.choices[0].message.content
@@ -328,7 +328,7 @@ class ReportSynthesizerAgent:
                         {"role": "system", "content": "Sen profesyonel bir tıp ve ilaç denetleme asistanısın. Türkçe yanıt ver."},
                         {"role": "user", "content": prompt}
                     ],
-                    model="llama3-70b-8192",
+                    model="llama-3.3-70b-versatile",
                     temperature=0.1
                 )
                 return response.choices[0].message.content
@@ -352,12 +352,16 @@ class PharmaOrchestrator:
         self.corporate_analyst = CorporateAnalystAgent()
         self.report_synthesizer = ReportSynthesizerAgent()
 
-    def process_medicine(self, image: Image.Image) -> tuple[str, dict]:
-        # Step 1: Scan image
-        vision_result = self.vision_scanner.run(image)
-        
-        if not vision_result.get("yazi_okunuyor_mu", True):
-            return "KURAL İHLALİ: Yazı okunmuyor veya ilaç kutusu tespit edilemedi. Lütfen fotoğrafı daha ışıklı bir yerde çekerek tekrar yükleyin.", {"vision": vision_result}
+    def process_medicine(self, image: Image.Image, manual_data: dict = None) -> tuple[str, dict]:
+        if manual_data:
+            vision_result = manual_data
+            print(f"[Pharma-Guard-AI] Görsel taraması atlandı. Elle girilen veriler kullanılıyor: {vision_result}")
+        else:
+            # Step 1: Scan image
+            vision_result = self.vision_scanner.run(image)
+            
+            if not vision_result.get("yazi_okunuyor_mu", True):
+                return "KURAL İHLALİ: Yazı okunmuyor veya ilaç kutusu tespit edilemedi. Lütfen fotoğrafı daha ışıklı bir yerde çekerek tekrar yükleyin.", {"vision": vision_result}
 
         # Step 2: RAG Search
         rag_result = self.rag_specialist.run(
