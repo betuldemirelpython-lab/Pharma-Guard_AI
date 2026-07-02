@@ -179,13 +179,10 @@ with col2:
     st.markdown("### 🤖 Denetim ve Analiz Süreci")
     
     # Manual Input Fallback Expander
-    with st.expander("📝 Elle İlaç Bilgisi Gir (Görsel Tarama / API Kotası Hatası Alırsanız)"):
-        st.info("Gemini/Groq vision API kotaları aşıldığında RAG ve denetim ajanlarını test etmek için ilacın üzerindeki bilgileri elle girip aşağıdaki seçeneği işaretleyebilirsiniz.")
-        m_ilac_adi = st.text_input("İlaç Adı (Örn: Parol)", "")
-        m_etken_madde = st.text_input("Etken Madde (Örn: Parasetamol)", "")
-        m_dozaj = st.text_input("Dozaj (Örn: 500 mg)", "")
-        m_uretici = st.text_input("Üretici Firma (Örn: Atabay)", "")
-        use_manual = st.checkbox("Görsel Tarama Yerine Bu Bilgileri Kullan")
+    with st.expander("📝 Sadece İlaç Adı ile Sorgula (Yedek & Pratik Yöntem)"):
+        st.info("API kotaları aşıldığında veya acil durumlarda sadece ilacın adını yazarak tüm denetim süreçlerini başlatabilirsiniz. Sistem etken madde, dozaj ve üretici bilgilerini yapay zeka ile otomatik tamamlayacaktır.")
+        m_ilac_adi = st.text_input("İlaç Adı (Örn: Parol, Aspirin, Apranax)", "")
+        use_manual = st.checkbox("Sadece Yazılan İlaç Adını Kullan")
 
     if st.button("🚀 Denetimi Başlat"):
         # Multi-agent orchestrator setup
@@ -194,19 +191,19 @@ with col2:
         # Determine manual data
         manual_data = None
         if use_manual:
-            if not m_ilac_adi or not m_etken_madde or not m_dozaj or not m_uretici:
-                st.error("Manuel analiz için lütfen tüm ilaç alanlarını doldurun!")
+            if not m_ilac_adi:
+                st.error("Manuel analiz için lütfen ilaç adını yazın!")
                 st.stop()
             manual_data = {
                 "ilac_adi": m_ilac_adi,
-                "etken_madde": m_etken_madde,
-                "dozaj": m_dozaj,
-                "uretici_firma": m_uretici,
+                "etken_madde": "Otomatik",
+                "dozaj": "Otomatik",
+                "uretici_firma": "Otomatik",
                 "yazi_okunuyor_mu": True,
                 "guven_puani": 10
             }
         elif image is None:
-            st.error("Lütfen sol taraftaki panelden bir ilaç kutusu fotoğrafı yükleyin veya yukarıdaki 'Elle İlaç Bilgisi Gir' kısmını doldurup 'Görsel Tarama Yerine Bu Bilgileri Kullan' seçeneğini işaretleyin.")
+            st.error("Lütfen sol taraftaki panelden bir ilaç kutusu fotoğrafı yükleyin veya yukarıdaki 'Sadece İlaç Adı ile Sorgula' kısmına ilaç adı yazıp onaylayın.")
             st.stop()
         
         # Progress indications

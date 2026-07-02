@@ -352,10 +352,49 @@ class PharmaOrchestrator:
         self.corporate_analyst = CorporateAnalystAgent()
         self.report_synthesizer = ReportSynthesizerAgent()
 
+    def resolve_drug_info(self, ilac_adi: str) -> dict:
+        """
+        Uses LLM fallback to resolve active ingredient, standard dosage, and manufacturer from drug name.
+        """
+        prompt = f"""
+        Kullanıcı sadece ilacın adını girdi: '{ilac_adi}'.
+        Lütfen bu ilacın yaygın bilinen etken maddesini, standart dozajını ve üretici firmasını tahmin et.
+        
+        Çıktıyı kesinlikle aşağıdaki JSON formatında ver:
+        {{
+          "ilac_adi": "{ilac_adi}",
+          "etken_madde": "Etken madde adı (örn: Parasetamol)",
+          "dozaj": "Dozaj (örn: 500 mg)",
+          "uretici_firma": "Üretici firma adı",
+          "yazi_okunuyor_mu": true,
+          "guven_puani": 8
+        }}
+        
+        Sadece geçerli JSON çıktısı ver.
+        """
+        try:
+            res_text = generate_text_with_fallback(prompt)
+            return extract_json(res_text.strip())
+        except Exception as e:
+            print(f"[Pharma-Guard-AI] Drug info resolution error: {e}")
+            return {
+                "ilac_adi": ilac_adi,
+                "etken_madde": "Bilinmeyen",
+                "dozaj": "Bilinmeyen",
+                "uretici_firma": "Bilinmeyen",
+                "yazi_okunuyor_mu": True,
+                "guven_puani": 5
+            }
+
     def process_medicine(self, image: Image.Image, manual_data: dict = None) -> tuple[str, dict]:
         if manual_data:
             vision_result = manual_data
-            print(f"[Pharma-Guard-AI] Görsel taraması atlandı. Elle girilen veriler kullanılıyor: {vision_result}")
+            # If only ilac_adi was provided, automatically resolve rest of fields using LLM
+            if not vision_result.get("etken_madde") or vision_result.get("etken_madde") == "Otomatik":
+                print(f"[Pharma-Guard-AI] İlaç etken maddesi otomatik çözümleniyor...")
+                resolved = self.resolve_drug_info(vision_result.get("ilac_adi"))
+                vision_result.update(resolved)
+            print(f"[Pharma-Guard-AI] Görsel taraması atlandı. Çözümlenmiş veriler kullanılıyor: {vision_result}")
         else:
             # Step 1: Scan image
             vision_result = self.vision_scanner.run(image)
