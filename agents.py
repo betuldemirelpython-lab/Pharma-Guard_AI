@@ -24,13 +24,19 @@ groq_client = None
 if groq_key:
     groq_client = Groq(api_key=groq_key)
 
-def get_gemini_model():
-    # Using gemini-2.0-flash as it's the recommended multimodal orchestrator
-    return genai.GenerativeModel("gemini-2.0-flash")
+import base64
+from io import BytesIO
+
+def get_gemini_model(model_name="gemini-2.0-flash"):
+    return genai.GenerativeModel(model_name)
+
+def pil_to_base64(image: Image.Image) -> str:
+    buffered = BytesIO()
+    image.save(buffered, format="JPEG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 def extract_json(text):
     try:
-        # Find first '{' and last '}'
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1:
@@ -41,9 +47,51 @@ def extract_json(text):
         print(f"[Pharma-Guard-AI] JSON extract/parse error: {e}. Original text: {text}")
         raise e
 
+def generate_text_with_fallback(prompt: str, system_instruction: str = None) -> str:
+    """
+    Tries multiple Gemini models and falls back to Groq if all Gemini options fail.
+    """
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    
+    # 1. Try Gemini
+    for model_name in models_to_try:
+        try:
+            print(f"[Pharma-Guard-AI] Deneniyor: {model_name}")
+            config = {}
+            if system_instruction:
+                config["system_instruction"] = system_instruction
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt, generation_config=config)
+            return response.text
+        except Exception as e:
+            print(f"[Pharma-Guard-AI] {model_name} Hatası: {e}")
+            continue
+
+    # 2. Try Groq Llama-3-70b as last resort fallback
+    if groq_client:
+        try:
+            print("[Pharma-Guard-AI] Gemini başarısız oldu. Groq (Llama-3-70B) deneniyor...")
+            messages = []
+            if system_instruction:
+                messages.append({"role": "system", "content": system_instruction})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = groq_client.chat.completions.create(
+                messages=messages,
+                model="llama3-70b-8192",
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"[Pharma-Guard-AI] Groq (Llama-3-70B) Hatası: {e}")
+            raise RuntimeError("Tüm yapay zeka sağlayıcıları (Gemini ve Groq) servis dışı veya limit aşımı hatası verdi.")
+
+    raise RuntimeError("Tüm Gemini modelleri başarısız oldu ve Groq API anahtarı tanımlı değil.")
+
 class VisionScannerAgent:
     """
     Scans the image of the medicine package using Gemini 2.0 Flash to extract name, active ingredient, dosage, and manufacturer.
+    Falls back to Gemini 1.5 Flash, then to Groq (Llama 3.2 Vision) if quota is exceeded.
     """
     def run(self, image: Image.Image) -> dict:
         # Ensure image is in RGB mode
@@ -73,25 +121,60 @@ class VisionScannerAgent:
         1. If the text on the package is blurry, unreadable, or missing, set "yazi_okunuyor_mu" to false. Do NOT guess the name of the medicine.
         2. Keep the output as valid, clean JSON only. Do not add introductory or concluding text.
         """
-        try:
-            model = get_gemini_model()
-            response = model.generate_content([image, prompt])
-            print(f"[Pharma-Guard-AI] Gemini Vision Yanıtı:\n{response.text}")
-            
-            data = extract_json(response.text.strip())
-            return data
-        except Exception as e:
-            print(f"[Pharma-Guard-AI] VisionScannerAgent error: {e}")
-            traceback.print_exc()
-            return {
-                "ilac_adi": "Bilinmeyen İlaç",
-                "etken_madde": "Bilinmeyen",
-                "dozaj": "0 mg",
-                "uretici_firma": "Bilinmeyen",
-                "yazi_okunuyor_mu": False,
-                "guven_puani": 1,
-                "hata": str(e)
-            }
+        
+        # Try Gemini models first
+        gemini_vision_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+        for model_name in gemini_vision_models:
+            try:
+                print(f"[Pharma-Guard-AI] Vision için {model_name} deneniyor...")
+                model = get_gemini_model(model_name)
+                response = model.generate_content([image, prompt])
+                print(f"[Pharma-Guard-AI] {model_name} Vision Yanıtı:\n{response.text}")
+                return extract_json(response.text.strip())
+            except Exception as e:
+                print(f"[Pharma-Guard-AI] {model_name} Vision Hatası: {e}")
+                continue
+
+        # If Gemini fails, try Groq Llama-3.2-11b-vision-preview
+        if groq_client:
+            try:
+                print("[Pharma-Guard-AI] Gemini Vision modelleri başarısız oldu. Groq Llama-3.2-11b-vision-preview deneniyor...")
+                img_base64 = pil_to_base64(image)
+                
+                response = groq_client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{img_base64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    model="llama-3.2-11b-vision-preview",
+                    temperature=0.1
+                )
+                raw_text = response.choices[0].message.content
+                print(f"[Pharma-Guard-AI] Groq Vision Yanıtı:\n{raw_text}")
+                return extract_json(raw_text.strip())
+            except Exception as e:
+                print(f"[Pharma-Guard-AI] Groq Vision Hatası: {e}")
+                
+        # Return fallback error dict if all failed
+        return {
+            "ilac_adi": "Bilinmeyen İlaç",
+            "etken_madde": "Bilinmeyen",
+            "dozaj": "0 mg",
+            "uretici_firma": "Bilinmeyen",
+            "yazi_okunuyor_mu": False,
+            "guven_puani": 1,
+            "hata": "Tüm Gemini ve Groq Vision modelleri kota/bağlantı hatası verdi."
+        }
 
 class RAGSpecialistAgent:
     """
@@ -162,9 +245,8 @@ class SafetyAuditorAgent:
         Sadece geçerli JSON çıktısı verin.
         """
         try:
-            model = get_gemini_model()
-            response = model.generate_content(prompt)
-            return extract_json(response.text.strip())
+            res_text = generate_text_with_fallback(prompt)
+            return extract_json(res_text.strip())
         except Exception as e:
             return {
                 "uyumlu_mu": False,
@@ -192,9 +274,8 @@ class CorporateAnalystAgent:
         }}
         """
         try:
-            model = get_gemini_model()
-            response = model.generate_content(prompt)
-            return extract_json(response.text.strip())
+            res_text = generate_text_with_fallback(prompt)
+            return extract_json(res_text.strip())
         except Exception as e:
             return {
                 "firma_tanimi": f"{uretici_firma} hakkında ek bilgi alınamadı.",
@@ -254,11 +335,9 @@ class ReportSynthesizerAgent:
             except Exception as e:
                 print(f"Groq API error, falling back to Gemini: {e}")
         
-        # Fallback to Gemini
+        # Fallback to Gemini with multiple model attempts
         try:
-            model = get_gemini_model()
-            response = model.generate_content(prompt)
-            return response.text
+            return generate_text_with_fallback(prompt)
         except Exception as e:
             return f"Rapor Sentezi Oluşturulurken Hata Oluştu: {e}"
 
