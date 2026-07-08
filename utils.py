@@ -14,6 +14,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 load_dotenv()
 
@@ -27,6 +29,32 @@ os.makedirs(DB_DIR, exist_ok=True)
 
 # Cache embeddings globally
 _embeddings = None
+
+# Register custom unicode fonts for Turkish character support
+font_name = 'Helvetica'
+font_bold_name = 'Helvetica-Bold'
+
+win_font = "C:/Windows/Fonts/arial.ttf"
+win_font_bold = "C:/Windows/Fonts/arialbd.ttf"
+linux_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+linux_font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+if os.path.exists(win_font) and os.path.exists(win_font_bold):
+    try:
+        pdfmetrics.registerFont(TTFont('Arial', win_font))
+        pdfmetrics.registerFont(TTFont('Arial-Bold', win_font_bold))
+        font_name = 'Arial'
+        font_bold_name = 'Arial-Bold'
+    except Exception as e:
+        print(f"[Pharma-Guard-AI] Failed to register Arial: {e}")
+elif os.path.exists(linux_font) and os.path.exists(linux_font_bold):
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVuSans', linux_font))
+        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', linux_font_bold))
+        font_name = 'DejaVuSans'
+        font_bold_name = 'DejaVuSans-Bold'
+    except Exception as e:
+        print(f"[Pharma-Guard-AI] Failed to register DejaVuSans: {e}")
 
 def get_embeddings():
     global _embeddings
@@ -100,8 +128,20 @@ def query_rag(query: str, k: int = 4):
         })
     return docs_info
 
+def clean_markdown_to_html(md_text: str) -> str:
+    """Converts basic markdown bold/italic formatting to HTML tags for ReportLab Paragraphs."""
+    # Convert bold **text** to <b>text</b>
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', md_text)
+    # Convert italic *text* to <i>text</i>
+    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
+    # Remove backticks
+    text = text.replace("`", "")
+    # Remove leading markdown heading hashes
+    text = re.sub(r'#+\s*', '', text)
+    return text.strip()
+
 def clean_markdown_to_text(md_text: str) -> str:
-    """Removes basic markdown formatting for clean PDF text insertion."""
+    """Removes basic markdown formatting for clean plain text (fallback/compatibility)."""
     text = md_text.replace("**", "").replace("*", "").replace("`", "")
     text = re.sub(r'#+\s*', '', text)
     return text.strip()
@@ -116,11 +156,11 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
     
     styles = getSampleStyleSheet()
     
-    # Custom styles
+    # Custom styles using dynamically registered Turkish fonts
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName=font_bold_name,
         fontSize=22,
         textColor=colors.HexColor('#2E5BFF'),
         spaceAfter=15,
@@ -130,7 +170,7 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
     h1_style = ParagraphStyle(
         'Heading1_Custom',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName=font_bold_name,
         fontSize=14,
         textColor=colors.HexColor('#1E293B'),
         spaceBefore=12,
@@ -141,7 +181,7 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
     body_style = ParagraphStyle(
         'Body_Custom',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=10,
         textColor=colors.HexColor('#334155'),
         spaceBefore=4,
@@ -152,7 +192,7 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
     bullet_style = ParagraphStyle(
         'Bullet_Custom',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=10,
         textColor=colors.HexColor('#475569'),
         leftIndent=15,
@@ -184,7 +224,7 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
         
         # Heading 1, 2, 3
         if line.startswith("#"):
-            cleaned = clean_markdown_to_text(line)
+            cleaned = clean_markdown_to_html(line)
             story.append(Spacer(1, 5))
             story.append(Paragraph(cleaned, h1_style))
             # Dynamic underline for headings
@@ -198,13 +238,13 @@ def generate_pdf_report(report_markdown: str, filename: str = "ilac_denetim_rapo
             story.append(Spacer(1, 5))
         # Bullet list
         elif line.startswith("-") or line.startswith("*"):
-            cleaned = clean_markdown_to_text(line[1:])
+            cleaned = clean_markdown_to_html(line[1:])
             story.append(Paragraph(f"&bull; {cleaned}", bullet_style))
         elif line.startswith("1.") or line.startswith("2.") or line.startswith("3.") or line.startswith("4.") or line.startswith("5."):
-            cleaned = clean_markdown_to_text(line)
+            cleaned = clean_markdown_to_html(line)
             story.append(Paragraph(cleaned, h1_style))
         else:
-            cleaned = clean_markdown_to_text(line)
+            cleaned = clean_markdown_to_html(line)
             story.append(Paragraph(cleaned, body_style))
             
     doc.build(story)

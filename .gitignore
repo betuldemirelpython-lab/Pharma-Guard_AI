@@ -4,3 +4,4 @@ __pycache__/
 data/vector_db/
 ilac_denetim_raporu.pdf
 .streamlit/
+scratch/
