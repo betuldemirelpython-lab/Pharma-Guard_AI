@@ -228,6 +228,9 @@ with st.sidebar:
         with st.spinner("Vektör veritabanı güncelleniyor..."):
             index_pdfs()
         st.success("İndeksleme tamamlandı! Yeniden yüklendi.")
+        
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: #94A3B8; font-size: 0.9rem;'>🚀 <b>Proje Geliştiricisi:</b><br>Betül Altınkaynak Demirel</div>", unsafe_allow_html=True)
         st.rerun()
 
     # Re-index manually
