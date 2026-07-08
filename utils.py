@@ -30,31 +30,32 @@ os.makedirs(DB_DIR, exist_ok=True)
 # Cache embeddings globally
 _embeddings = None
 
+import urllib.request
+
 # Register custom unicode fonts for Turkish character support
 font_name = 'Helvetica'
 font_bold_name = 'Helvetica-Bold'
 
-win_font = "C:/Windows/Fonts/arial.ttf"
-win_font_bold = "C:/Windows/Fonts/arialbd.ttf"
-linux_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-linux_font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+def ensure_fonts():
+    font_dir = os.path.join(os.getcwd(), "fonts")
+    os.makedirs(font_dir, exist_ok=True)
+    reg_path = os.path.join(font_dir, "Roboto-Regular.ttf")
+    bold_path = os.path.join(font_dir, "Roboto-Bold.ttf")
+    
+    try:
+        if not os.path.exists(reg_path):
+            urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf", reg_path)
+        if not os.path.exists(bold_path):
+            urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf", bold_path)
+            
+        pdfmetrics.registerFont(TTFont('Roboto', reg_path))
+        pdfmetrics.registerFont(TTFont('Roboto-Bold', bold_path))
+        return 'Roboto', 'Roboto-Bold'
+    except Exception as e:
+        print(f"[Pharma-Guard-AI] Failed to setup Roboto fonts: {e}")
+        return 'Helvetica', 'Helvetica-Bold'
 
-if os.path.exists(win_font) and os.path.exists(win_font_bold):
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', win_font))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', win_font_bold))
-        font_name = 'Arial'
-        font_bold_name = 'Arial-Bold'
-    except Exception as e:
-        print(f"[Pharma-Guard-AI] Failed to register Arial: {e}")
-elif os.path.exists(linux_font) and os.path.exists(linux_font_bold):
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', linux_font))
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', linux_font_bold))
-        font_name = 'DejaVuSans'
-        font_bold_name = 'DejaVuSans-Bold'
-    except Exception as e:
-        print(f"[Pharma-Guard-AI] Failed to register DejaVuSans: {e}")
+font_name, font_bold_name = ensure_fonts()
 
 def get_embeddings():
     global _embeddings
