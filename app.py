@@ -10,6 +10,15 @@ from agents import PharmaOrchestrator
 # Load environmental variables
 load_dotenv()
 
+def add_report_to_rag(pdf_path, ilac_adi):
+    import shutil
+    ilac_adi_clean = ilac_adi.replace(" ", "_").replace("/", "_")
+    corpus_path = os.path.join(os.getcwd(), "data", "corpus", f"{ilac_adi_clean}_rapor.pdf")
+    shutil.copy(pdf_path, corpus_path)
+    from utils import index_pdfs
+    index_pdfs()
+    st.session_state["rag_success"] = f"{ilac_adi} raporu başarıyla sisteme öğretildi!"
+
 # Streamlit App Configurations
 st.set_page_config(
     page_title="Pharma-Guard AI - Akıllı İlaç Denetçisi",
@@ -17,6 +26,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+if "rag_success" in st.session_state:
+    st.toast(st.session_state["rag_success"], icon="✅")
+    del st.session_state["rag_success"]
 
 # Custom Styling (Rich Dark Theme with Blue-Purple accents & Glassmorphism)
 st.markdown("""
@@ -95,6 +108,42 @@ st.markdown("""
         transform: translateY(-2px) !important;
         box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5) !important;
     }
+    
+    /* Checkbox styling to make it legible */
+    [data-testid="stCheckbox"] p, .stCheckbox label span {
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        color: #F8FAFC !important;
+    }
+    
+    /* Expander styling to make it legible */
+    [data-testid="stExpander"] {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 10px !important;
+    }
+    [data-testid="stExpander"] summary p {
+        color: #F8FAFC !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+    }
+    
+    /* Text input styling */
+    .stTextInput label p {
+        color: #F8FAFC !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+    }
+    .stTextInput input {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    }
+    .stTextInput input:focus {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 1px #3B82F6 !important;
+    }
+    
     /* Sidebar styling */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0F172A 0%, #1E1B4B 100%) !important;
@@ -149,10 +198,10 @@ with st.sidebar:
     st.markdown("### 🔑 API Anahtarı Değiştir")
     st.caption("Eğer mevcut anahtarınızın kotası dolduysa, aşağıdan yeni anahtarlar girip anında test edebilirsiniz:")
     
-    custom_gemini_key = st.text_input("Gemini API Key:", value=os.getenv("GEMINI_API_KEY") or "", type="password")
+    custom_gemini_key = st.text_input("Gemini API Key (Opsiyonel):", value="", placeholder="Mevcut anahtarı değiştirmek için buraya girin...", type="password")
     st.markdown("[🔗 Google AI Studio'dan Ücretsiz Gemini Anahtarı Al](https://aistudio.google.com/)", unsafe_allow_html=True)
     
-    custom_groq_key = st.text_input("Groq API Key:", value=os.getenv("GROQ_API_KEY") or "", type="password")
+    custom_groq_key = st.text_input("Groq API Key (Opsiyonel):", value="", placeholder="Mevcut anahtarı değiştirmek için buraya girin...", type="password")
     st.markdown("[🔗 Groq Console'dan Ücretsiz Groq Anahtarı Al](https://console.groq.com/keys)", unsafe_allow_html=True)
     
     st.markdown("---")
@@ -269,8 +318,11 @@ with col2:
                 st.metric("Corporate Analyst", f"{corp_score}/10", help="Üretici firma güvenliği")
             
             # Check for warnings or blocks
-            if logs.get("safety", {}).get("durum") == "VERİ UYUŞMAZLIĞI":
+            safety_durum = logs.get("safety", {}).get("durum", "")
+            if safety_durum == "VERİ UYUŞMAZLIĞI":
                 st.error(f"🚨 **VERİ UYUŞMAZLIĞI ALARMI**: {logs['safety'].get('fark_detaylari')}")
+            elif "PROSPEKTÜS BULUNAMADI" in safety_durum:
+                st.warning(f"⚠️ **BİLGİ**: Sistem veritabanında bu ilaca ait onaylı bir prospektüs bulunamadı. Genel tıbbi verilere göre analiz yapılmıştır.")
             elif not logs.get("vision", {}).get("yazi_okunuyor_mu", True):
                 st.warning("⚠️ **KURAL İHLALİ**: Görsel üzerindeki yazılar okunamıyor. Lütfen daha iyi ışık altında tekrar çekin.")
                 st.error(f"Ajan Detay Hatası: {logs.get('vision')}")
@@ -278,16 +330,26 @@ with col2:
         # Display Final synthesized Report
         st.markdown("---")
         st.markdown("### 📝 Nihai Denetim Raporu")
-        st.markdown(final_report)
+        st.markdown(final_report, unsafe_allow_html=True)
         
         # Generate and allow downloading PDF
         pdf_path = generate_pdf_report(final_report)
         
-        with open(pdf_path, "rb") as f:
-            st.download_button(
-                label="📥 Profesyonel PDF Raporu İndir",
-                data=f,
-                file_name="ilac_denetim_raporu.pdf",
-                mime="application/pdf"
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            with open(pdf_path, "rb") as f:
+                st.download_button(
+                    label="📥 Profesyonel PDF Raporu İndir",
+                    data=f,
+                    file_name="ilac_denetim_raporu.pdf",
+                    mime="application/pdf"
+                )
+        with col_btn2:
+            ilac_adi_val = logs.get("vision", {}).get("ilac_adi", "Bilinmeyen")
+            st.button(
+                "💾 Raporu RAG Kaynakçaya Ekle",
+                on_click=add_report_to_rag,
+                args=(pdf_path, ilac_adi_val),
+                help="Bu raporu yapay zekanın hafızasına (vektör veritabanına) PDF olarak kaydeder."
             )
     st.markdown("</div>", unsafe_allow_html=True)

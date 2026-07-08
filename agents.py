@@ -5,6 +5,7 @@ from PIL import Image
 import google.generativeai as genai
 from groq import Groq
 from dotenv import load_dotenv
+from duckduckgo_search import DDGS
 
 from utils import query_rag
 
@@ -188,21 +189,38 @@ class VisionScannerAgent:
 
 class RAGSpecialistAgent:
     """
-    Retrieves prospectus data using RAG from local PDFs.
+    Retrieves prospectus data using RAG from local PDFs. Falls back to Internet search (DuckDuckGo) if needed.
     """
     def run(self, ilac_adi: str, etken_madde: str) -> dict:
         query = f"{ilac_adi} {etken_madde} prospektüs endikasyonlar yan etkiler dozaj uyarısı"
+        rag_docs = []
         try:
             rag_docs = query_rag(query, k=5)
-            return {
-                "bulunan_belgeler": rag_docs,
-                "durum": "BAŞARILI" if rag_docs else "KAYNAK_BULUNAMADI"
-            }
         except Exception as e:
-            return {
-                "bulunan_belgeler": [],
-                "durum": f"HATA: {str(e)}"
-            }
+            print(f"[Pharma-Guard-AI] RAG Error: {e}")
+            
+        web_docs = []
+        try:
+            print("[Pharma-Guard-AI] İnternet üzerinden prospektüs aranıyor...")
+            ddgs = DDGS()
+            search_query = f"{ilac_adi} {etken_madde} prospektüs site:ilacprospektusu.com"
+            results = ddgs.text(search_query, max_results=3, region="tr-tr")
+            for i, r in enumerate(results):
+                web_docs.append({
+                    "content": r.get("body", "") + " (Kaynak: " + r.get("href", "") + ")",
+                    "source": "İnternet: " + r.get("title", ""),
+                    "page": 1,
+                    "score": 0.0
+                })
+        except Exception as e:
+            print(f"[Pharma-Guard-AI] İnternet arama hatası: {e}")
+            
+        combined_docs = rag_docs + web_docs
+        
+        return {
+            "bulunan_belgeler": combined_docs,
+            "durum": "BAŞARILI" if combined_docs else "KAYNAK_BULUNAMADI"
+        }
 
 class SafetyAuditorAgent:
     """
@@ -237,15 +255,16 @@ class SafetyAuditorAgent:
         {combined_prospectus[:4000]}
         
         Lütfen aşağıdaki kurallara göre analizi yapın:
-        1. Tarama verilerindeki etken madde ve dozaj değeri, prospektüs verileri ile uyumlu mu?
-        2. Prospektüsteki dozaj/mg bilgisiyle en ufak bir fark var mı? (Örn: 1 mg fark olsa bile uyuşmazlık sayılmalıdır).
-        3. İlacın "Yan Etkileri", "Diğer İlaçlarla Etkileşimi" ve "Kimler Kullanamaz" bilgilerini özetleyin.
+        1. ÖNCELİKLE RAG Prospektüs Verileri'nin, taranan ilaca veya etken maddeye ait olup olmadığını kontrol et. Eğer RAG verileri farklı bir ilaca veya konuya aitse, bu durumu "PROSPEKTÜS BULUNAMADI" olarak değerlendir.
+        2. EĞER PROSPEKTÜS BULUNAMADIYSA: "uyumlu_mu": true (hata vermemesi için), "durum": "PROSPEKTÜS BULUNAMADI", "fark_detaylari": "Bu ilaca ait prospektüs bulunamadı." yap ve diğer alanları genel tıbbi bilgine göre doldur.
+        3. EĞER PROSPEKTÜS BULUNDUYSA VE DOĞRUYSA: Tarama verilerindeki etken madde ve dozaj değeri, prospektüs verileri ile uyumlu mu kontrol et. Dozajda 1 mg fark olsa bile uyuşmazlık sayılmalıdır ("durum": "VERİ UYUŞMAZLIĞI").
+        4. İlacın "Yan Etkileri", "Diğer İlaçlarla Etkileşimi" ve "Kimler Kullanamaz" bilgilerini özetleyin.
         
         Yanıtı şu JSON formatında dönün:
         {{
           "uyumlu_mu": true/false,
-          "durum": "VERİ UYUMLU" veya "VERİ UYUŞMAZLIĞI",
-          "fark_detaylari": "Uyuşmazlık veya fark varsa açıklaması",
+          "durum": "VERİ UYUMLU", "VERİ UYUŞMAZLIĞI" veya "PROSPEKTÜS BULUNAMADI",
+          "fark_detaylari": "Uyuşmazlık veya fark varsa açıklaması, prospektüs yoksa 'Veritabanında prospektüs bulunamadı' mesajı",
           "yan_etkiler": ["Yan etki 1", "Yan etki 2"],
           "etkilesimler": ["Etkileşim 1", "Etkileşim 2"],
           "kontrendikasyonlar": ["Kimler kullanamaz 1", "Kimler kullanamaz 2"],
@@ -318,7 +337,7 @@ class ReportSynthesizerAgent:
         
         ### OPERASYONEL PROTOKOLLER VE KISITLAMALAR:
         - GÜVEN PUANI (Confidence Score): Her bilgi parçası için 1-10 arası bir puan ver.
-        - HALÜSİNASYON ENGELİ: Eğer ilacın etken maddesi ile prospektüs bilgisi eşleşmiyorsa veya uyuşmazlık varsa raporun en üstünde kırmızı renkle 'VERİ UYUŞMAZLIĞI ALARMI' başlığını kullan ve detaylı uyar.
+        - HALÜSİNASYON ENGELİ: Eğer Safety-Auditor verilerinde durum "VERİ UYUŞMAZLIĞI" ise raporun en üstünde kırmızı renkle 'VERİ UYUŞMAZLIĞI ALARMI' başlığını kullan ve detaylı uyar. Eğer durum "PROSPEKTÜS BULUNAMADI" ise sadece bir 'BİLGİ' notu düş, kesinlikle uyumsuzluk alarmı VERME.
         - DİL VE ÜSLUP: Rapor tamamen Türkçe, tıbbi terimleri parantez içinde açıklayan, net bir dil içermeli.
         - İNDİRME FORMATI: Çıktıyı "İndirilebilir Rapor" için uygun bir Markdown hiyerarşisinde oluştur.
         

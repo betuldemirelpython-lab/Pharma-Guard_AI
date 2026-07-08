@@ -9,3 +9,4 @@ python-dotenv
 reportlab
 pillow
 sentence-transformers
+duckduckgo-search==8.1.1
